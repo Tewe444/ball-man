@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Grapple Combat Multiplayer</title>
+    <title>BallMan</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -111,6 +111,18 @@
     <div id="ui-layer">
         <div id="toast-container" class="absolute top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
+        <!-- Virtual Touch Controls (NUR im 2-Spieler-Modus sichtbar auf Touch-Geräten) -->
+        <div id="touch-controls" class="absolute inset-0 pointer-events-none hidden justify-between items-end p-6 z-15">
+            <div id="touch-btn-p1" class="interactive w-28 h-28 md:w-36 md:h-36 rounded-full bg-blue-600/60 border-4 border-blue-300 flex flex-col items-center justify-center text-white font-black text-sm md:text-base shadow-[0_0_25px_rgba(59,130,246,0.7)] active:scale-95 transition select-none">
+                <span>⚡ P1 HOOK</span>
+                <span class="text-[10px] font-normal opacity-90">Tippen & Halten</span>
+            </div>
+            <div id="touch-btn-p2" class="interactive w-28 h-28 md:w-36 md:h-36 rounded-full bg-orange-600/60 border-4 border-orange-300 flex flex-col items-center justify-center text-white font-black text-sm md:text-base shadow-[0_0_25px_rgba(249,115,22,0.7)] active:scale-95 transition select-none">
+                <span>⚡ P2 HOOK</span>
+                <span class="text-[10px] font-normal opacity-90">Tippen & Halten</span>
+            </div>
+        </div>
+
         <!-- In-Game HUD -->
         <div id="hud" class="hidden p-4 flex justify-between items-start w-full z-10">
             <div class="text-blue-400 font-bold text-lg drop-shadow-md">
@@ -147,10 +159,10 @@
         <div id="menu-overlay" class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm flex flex-col items-center justify-between py-8 px-4 interactive z-20 overflow-y-auto">
             <div class="text-center mt-4">
                 <h1 class="text-5xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-teal-300 to-green-400 gd-title mb-1">
-                    GRAPPLE
+                    BALL
                 </h1>
                 <h1 class="text-5xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-400 to-red-500 gd-title">
-                    POWER-UP
+                    MAN
                 </h1>
             </div>
 
@@ -194,7 +206,7 @@
             </div>
 
             <div class="mt-4 flex flex-wrap gap-3 text-xs text-slate-400 uppercase tracking-wider font-semibold justify-center">
-                <span id="controller-status" class="bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400">🎮 Gamepad Aktiv</span>
+                <span id="controller-status" class="bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 text-yellow-400">⌨️ Tastatur / Touch Aktiv</span>
                 <span onclick="playRandomTrack()" class="bg-slate-800 hover:bg-slate-700 cursor-pointer px-3 py-1.5 rounded-lg border border-slate-700 text-yellow-400">🎲 Song: <span id="menu-track-name">Neon Pulse</span></span>
                 <span onclick="toggleMusic()" class="bg-slate-800 hover:bg-slate-700 cursor-pointer px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">🔊 <span id="music-menu-status">AN</span></span>
             </div>
@@ -286,6 +298,35 @@
         let isMusicOn = true;
         let currentTrackIdx = 0;
         let musicTimer = null;
+
+        // Eingabe-Modus (Auto-Erkennung: 'touch', 'keyboard', 'gamepad')
+        let inputMode = 'keyboard';
+        let isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+        function setInputMode(mode) {
+            inputMode = mode;
+            if (mode === 'touch') isTouchDevice = true;
+            
+            const touchControlsEl = document.getElementById('touch-controls');
+            const controllerStatusEl = document.getElementById('controller-status');
+            
+            // Touch-Buttons NUR im 2-Spieler-Modus auf Touch-Geräten anzeigen
+            if (touchControlsEl) {
+                if (isTouchDevice && currentMode === 2 && state === 'playing') {
+                    touchControlsEl.classList.remove('hidden');
+                    touchControlsEl.classList.add('flex');
+                } else {
+                    touchControlsEl.classList.add('hidden');
+                    touchControlsEl.classList.remove('flex');
+                }
+            }
+
+            if (controllerStatusEl) {
+                if (inputMode === 'touch' || isTouchDevice) controllerStatusEl.innerText = '📱 Touch Format Aktiv';
+                else if (inputMode === 'gamepad') controllerStatusEl.innerText = '🎮 Gamepad Aktiv';
+                else controllerStatusEl.innerText = '⌨️ Tastatur Format Aktiv';
+            }
+        }
 
         // Death delay state
         let deathTimer = null;
@@ -386,23 +427,31 @@
             } catch (e) {}
         }
 
-        const trackNames = [
-            "Neon Pulse", "Cyber Glide", "Sunset Drift", "Demon Echo", "Hyper Orbit",
-            "Galactic Vibe", "Pixel Waveform", "Synth Horizon", "Electric Arcade", "Cosmic Dream"
+        // Generiere 100 unterschiedliche Prozedurale Musik-Tracks & Frequenzen
+        const trackNames = [];
+        const trackMelodies = [];
+        const baseScales = [
+            [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25], // Dur
+            [220.00, 246.94, 261.63, 293.66, 329.63, 349.23, 392.00, 440.00], // Moll
+            [146.83, 164.81, 174.61, 196.00, 220.00, 233.08, 261.63, 293.66]  // Dämonen-Moll / Phrygisch
         ];
+        const adjectives = ["Neon", "Cyber", "Dark", "Demon", "Hyper", "Galactic", "Pixel", "Synth", "Electric", "Cosmic", "Infernal", "Shadow", "Quantum", "Void", "Blood", "Abyssal"];
+        const nouns = ["Pulse", "Glide", "Drift", "Echo", "Orbit", "Vibe", "Waveform", "Horizon", "Arcade", "Dream", "Core", "Storm", "Rage", "Realm", "Nexus", "Doom"];
 
-        const trackMelodies = [
-            [261.63, 329.63, 392.00, 523.25, 440.00, 392.00, 329.63, 293.66],
-            [220.00, 261.63, 329.63, 440.00, 493.88, 440.00, 329.63, 261.63],
-            [196.00, 246.94, 293.66, 392.00, 440.00, 392.00, 293.66, 246.94],
-            [146.83, 185.00, 220.00, 293.66, 349.23, 293.66, 220.00, 185.00],
-            [293.66, 369.99, 440.00, 587.33, 523.25, 440.00, 369.99, 329.63],
-            [164.81, 220.00, 246.94, 329.63, 392.00, 329.63, 246.94, 220.00],
-            [261.63, 392.00, 523.25, 659.25, 523.25, 392.00, 329.63, 261.63],
-            [220.00, 293.66, 369.99, 440.00, 554.37, 440.00, 369.99, 293.66],
-            [174.61, 233.08, 261.63, 349.23, 415.30, 349.23, 261.63, 233.08],
-            [246.94, 329.63, 392.00, 493.88, 587.33, 493.88, 392.00, 329.63]
-        ];
+        for (let i = 0; i < 100; i++) {
+            const adj = adjectives[i % adjectives.length];
+            const noun = nouns[(i * 3) % nouns.length];
+            trackNames.push(`${i + 1}. ${adj} ${noun}`);
+
+            const isDemonTrack = i >= 9; // Ab Track 10 sehr bedrohlich/spannend
+            const scale = isDemonTrack ? baseScales[2] : baseScales[i % 2];
+            const melody = [];
+            for (let s = 0; s < 8; s++) {
+                const note = scale[Math.floor((Math.sin(i * 10 + s) * 0.5 + 0.5) * scale.length)];
+                melody.push(note);
+            }
+            trackMelodies.push(melody);
+        }
 
         function startSynthMusic() {
             if (musicTimer) clearInterval(musicTimer);
@@ -410,38 +459,40 @@
 
             let step = 0;
             const melody = trackMelodies[currentTrackIdx % trackMelodies.length];
+            const isDemon = currentTrackIdx >= 9;
 
             musicTimer = setInterval(() => {
                 if (!isMusicOn || !audioCtx) return;
                 try {
                     const now = audioCtx.currentTime;
-                    if (step % 2 === 0) {
+                    
+                    if (step % (isDemon ? 1 : 2) === 0) {
                         const bassOsc = audioCtx.createOscillator();
                         const bassGain = audioCtx.createGain();
                         bassOsc.connect(bassGain);
                         bassGain.connect(audioCtx.destination);
-                        bassOsc.type = 'triangle';
-                        bassOsc.frequency.setValueAtTime(melody[(step / 2) % melody.length] / 2, now);
-                        bassGain.gain.setValueAtTime(0.06, now);
-                        bassGain.gain.linearRampToValueAtTime(0.001, now + 0.22);
+                        bassOsc.type = isDemon ? 'sawtooth' : 'triangle';
+                        bassOsc.frequency.setValueAtTime(melody[(step) % melody.length] / (isDemon ? 3 : 2), now);
+                        bassGain.gain.setValueAtTime(isDemon ? 0.09 : 0.06, now);
+                        bassGain.gain.linearRampToValueAtTime(0.001, now + (isDemon ? 0.12 : 0.22));
                         bassOsc.start(now);
-                        bassOsc.stop(now + 0.22);
+                        bassOsc.stop(now + (isDemon ? 0.12 : 0.22));
                     }
 
                     const leadOsc = audioCtx.createOscillator();
                     const leadGain = audioCtx.createGain();
                     leadOsc.connect(leadGain);
                     leadGain.connect(audioCtx.destination);
-                    leadOsc.type = 'sine';
-                    leadOsc.frequency.setValueAtTime(melody[step % melody.length], now);
-                    leadGain.gain.setValueAtTime(0.04, now);
+                    leadOsc.type = isDemon ? 'sawtooth' : 'sine';
+                    leadOsc.frequency.setValueAtTime(melody[step % melody.length] * (isDemon ? 1.5 : 1), now);
+                    leadGain.gain.setValueAtTime(isDemon ? 0.06 : 0.04, now);
                     leadGain.gain.linearRampToValueAtTime(0.001, now + 0.16);
                     leadOsc.start(now);
                     leadOsc.stop(now + 0.16);
 
                     step = (step + 1) % 16;
                 } catch(e) {}
-            }, 150);
+            }, isDemon ? 110 : 150);
         }
 
         function playRandomTrack() {
@@ -493,26 +544,40 @@
             deathY: 550
         };
 
-        // Mehr vorgefertigte Level mit sehr niedriger Hindernis-Chance
+        // Expanded Level Definitions (20 Levels, 11-20 Dämonen-Level)
         const gdLevels = [
             { id: 1, name: "1. STEREO SWING", diff: "EASY", stars: 1, color: "#22c55e", bg: "NEON GRID", segments: 35, spacing: 320, platformChance: 0.5, powerupChance: 0.4, obstacleChance: 0.08, cost: 0 },
-            { id: 2, name: "2. HOOK ON TRACK", diff: "NORMAL", stars: 2, color: "#3b82f6", bg: "DEEP SPACE", segments: 45, spacing: 340, platformChance: 0.45, powerupChance: 0.45, obstacleChance: 0.12, cost: 100 },
-            { id: 3, name: "3. POLAR GRAPPLE", diff: "NORMAL", stars: 2, color: "#a855f7", bg: "RETRO SUNSET", segments: 55, spacing: 360, platformChance: 0.4, powerupChance: 0.5, obstacleChance: 0.15, cost: 200 },
-            { id: 4, name: "4. DRY COMBAT", diff: "HARD", stars: 3, color: "#f97316", bg: "CYBER MATRIX", segments: 65, spacing: 380, platformChance: 0.35, powerupChance: 0.55, obstacleChance: 0.18, cost: 400 },
-            { id: 5, name: "5. NEON FLIGHT", diff: "HARD", stars: 3, color: "#eab308", bg: "NEON GRID", segments: 75, spacing: 390, platformChance: 0.35, powerupChance: 0.6, obstacleChance: 0.2, cost: 800 },
-            { id: 6, name: "6. CYBER DRIFT", diff: "INSANE", stars: 4, color: "#ec4899", bg: "CYBER MATRIX", segments: 85, spacing: 400, platformChance: 0.3, powerupChance: 0.65, obstacleChance: 0.22, cost: 1000 },
-            { id: 7, name: "7. SUNSET RUSH", diff: "INSANE", stars: 4, color: "#10b981", bg: "RETRO SUNSET", segments: 95, spacing: 410, platformChance: 0.3, powerupChance: 0.7, obstacleChance: 0.25, cost: 1500 },
-            { id: 8, name: "8. ORBITAL FLYER", diff: "INSANE", stars: 4, color: "#06b6d4", bg: "DEEP SPACE", segments: 105, spacing: 420, platformChance: 0.28, powerupChance: 0.7, obstacleChance: 0.25, cost: 2000 },
-            { id: 9, name: "9. LAVA CAVERN", diff: "DEMON", stars: 5, color: "#ef4444", bg: "LAVA CAVERN", segments: 115, spacing: 430, platformChance: 0.25, powerupChance: 0.75, obstacleChance: 0.28, cost: 3500 },
-            { id: 10, name: "10. DEMON MASTER", diff: "DEMON", stars: 5, color: "#dc2626", bg: "LAVA CAVERN", segments: 130, spacing: 440, platformChance: 0.25, powerupChance: 0.8, obstacleChance: 0.3, cost: 5000 }
+            { id: 2, name: "2. HOOK ON TRACK", diff: "NORMAL", stars: 2, color: "#3b82f6", bg: "DEEP SPACE", segments: 42, spacing: 330, platformChance: 0.45, powerupChance: 0.45, obstacleChance: 0.1, cost: 100 },
+            { id: 3, name: "3. POLAR GRAPPLE", diff: "NORMAL", stars: 2, color: "#a855f7", bg: "RETRO SUNSET", segments: 48, spacing: 340, platformChance: 0.42, powerupChance: 0.45, obstacleChance: 0.12, cost: 200 },
+            { id: 4, name: "4. DRY COMBAT", diff: "HARD", stars: 3, color: "#f97316", bg: "CYBER MATRIX", segments: 55, spacing: 350, platformChance: 0.4, powerupChance: 0.5, obstacleChance: 0.15, cost: 400 },
+            { id: 5, name: "5. NEON FLIGHT", diff: "HARD", stars: 3, color: "#eab308", bg: "NEON GRID", segments: 62, spacing: 360, platformChance: 0.38, powerupChance: 0.5, obstacleChance: 0.18, cost: 600 },
+            { id: 6, name: "6. CYBER DRIFT", diff: "HARD", stars: 3, color: "#ec4899", bg: "CYBER MATRIX", segments: 70, spacing: 370, platformChance: 0.35, powerupChance: 0.55, obstacleChance: 0.2, cost: 800 },
+            { id: 7, name: "7. SUNSET RUSH", diff: "INSANE", stars: 4, color: "#10b981", bg: "RETRO SUNSET", segments: 78, spacing: 380, platformChance: 0.32, powerupChance: 0.55, obstacleChance: 0.22, cost: 1000 },
+            { id: 8, name: "8. ORBITAL FLYER", diff: "INSANE", stars: 4, color: "#06b6d4", bg: "DEEP SPACE", segments: 85, spacing: 390, platformChance: 0.3, powerupChance: 0.6, obstacleChance: 0.25, cost: 1300 },
+            { id: 9, name: "9. VOLCANO ESCAPE", diff: "INSANE", stars: 4, color: "#f43f5e", bg: "LAVA CAVERN", segments: 92, spacing: 400, platformChance: 0.28, powerupChance: 0.6, obstacleChance: 0.28, cost: 1600 },
+            // EXTREM SCHWERE DÄMONEN LEVEL (10-20)
+            { id: 10, name: "10. DEMON AWAKENING", diff: "EXTREME DEMON", stars: 5, color: "#ef4444", bg: "LAVA CAVERN", segments: 100, spacing: 410, platformChance: 0.22, powerupChance: 0.65, obstacleChance: 0.35, cost: 2000 },
+            { id: 11, name: "11. ABYSSAL CHAOS", diff: "EXTREME DEMON", stars: 5, color: "#dc2626", bg: "DEMON REALM", segments: 110, spacing: 420, platformChance: 0.2, powerupChance: 0.65, obstacleChance: 0.38, cost: 2500 },
+            { id: 12, name: "12. INFERNAL HELLFIRE", diff: "EXTREME DEMON", stars: 5, color: "#b91c1c", bg: "DEMON REALM", segments: 120, spacing: 430, platformChance: 0.18, powerupChance: 0.7, obstacleChance: 0.4, cost: 3000 },
+            { id: 13, name: "13. BLOOD SWING", diff: "INSANE DEMON", stars: 6, color: "#991b1b", bg: "DEMON REALM", segments: 130, spacing: 440, platformChance: 0.16, powerupChance: 0.7, obstacleChance: 0.42, cost: 3500 },
+            { id: 14, name: "14. VOID CRUSHER", diff: "INSANE DEMON", stars: 6, color: "#7f1d1d", bg: "DEMON REALM", segments: 140, spacing: 450, platformChance: 0.15, powerupChance: 0.75, obstacleChance: 0.45, cost: 4000 },
+            { id: 15, name: "15. SHADOW CORE", diff: "INSANE DEMON", stars: 6, color: "#881337", bg: "DEMON REALM", segments: 150, spacing: 460, platformChance: 0.14, powerupChance: 0.75, obstacleChance: 0.48, cost: 4500 },
+            { id: 16, name: "16. DOOMSDAY HAVOC", diff: "MYTHIC DEMON", stars: 7, color: "#be123c", bg: "DEMON REALM", segments: 160, spacing: 470, platformChance: 0.12, powerupChance: 0.8, obstacleChance: 0.5, cost: 5000 },
+            { id: 17, name: "17. DARK GRAVITY", diff: "MYTHIC DEMON", stars: 7, color: "#e11d48", bg: "DEMON REALM", segments: 170, spacing: 480, platformChance: 0.1, powerupChance: 0.8, obstacleChance: 0.52, cost: 6000 },
+            { id: 18, name: "18. APOCALYPSE RUN", diff: "MYTHIC DEMON", stars: 7, color: "#f43f5e", bg: "DEMON REALM", segments: 185, spacing: 490, platformChance: 0.08, powerupChance: 0.85, obstacleChance: 0.55, cost: 7000 },
+            { id: 19, name: "19. DEMON GOD'S LAIR", diff: "GODLIKE DEMON", stars: 8, color: "#fda4af", bg: "DEMON REALM", segments: 200, spacing: 500, platformChance: 0.06, powerupChance: 0.9, obstacleChance: 0.58, cost: 8500 },
+            { id: 20, name: "20. ULTIMATE OMEGA DEMON", diff: "GODLIKE DEMON", stars: 10, color: "#ffffff", bg: "DEMON REALM", segments: 220, spacing: 520, platformChance: 0.05, powerupChance: 1.0, obstacleChance: 0.6, cost: 10000 }
         ];
 
         let state = 'menu';
         let currentMode = 1;
         let selectedLevelIdx = 0;
         let totalCoins = parseInt(localStorage.getItem('grapple_coins') || '0');
-        let levelProgress = JSON.parse(localStorage.getItem('grapple_progress') || '[0,0,0,0,0,0,0,0,0,0]');
-        let unlockedLevels = JSON.parse(localStorage.getItem('grapple_unlocked') || '[true,false,false,false,false,false,false,false,false,false]');
+        let levelProgress = JSON.parse(localStorage.getItem('grapple_progress') || JSON.stringify(new Array(20).fill(0)));
+        let unlockedLevels = JSON.parse(localStorage.getItem('grapple_unlocked') || JSON.stringify([true, ...new Array(19).fill(false)]));
+
+        let camera = { x: 0, y: 0 };
+        let levelEndX = 0;
 
         let players = [];
         let anchors = [];
@@ -522,8 +587,6 @@
         let coins = [];
         let obstacles = [];
         let particles = [];
-        let levelEndX = 0;
-        let camera = { x: 0, y: 0 };
 
         const uiMenu = document.getElementById('menu-overlay');
         const uiLevel = document.getElementById('level-overlay');
@@ -531,19 +594,19 @@
         const uiEnd = document.getElementById('end-overlay');
         const uiHudP2 = document.getElementById('hud-p2');
 
-        function saveProgress() {
-            localStorage.setItem('grapple_coins', totalCoins);
-            localStorage.setItem('grapple_progress', JSON.stringify(levelProgress));
-            localStorage.setItem('grapple_unlocked', JSON.stringify(unlockedLevels));
-        }
-
         function showToast(msg) {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            toast.className = 'toast bg-yellow-500 text-slate-950 px-4 py-2 rounded-xl font-black text-sm shadow-lg border-2 border-yellow-300';
+            toast.className = 'toast bg-slate-900 border-2 border-yellow-500 text-yellow-300 font-extrabold px-4 py-2 rounded-xl shadow-lg text-sm';
             toast.innerText = msg;
             container.appendChild(toast);
             setTimeout(() => toast.remove(), 3000);
+        }
+
+        function saveProgress() {
+            localStorage.setItem('grapple_coins', totalCoins.toString());
+            localStorage.setItem('grapple_progress', JSON.stringify(levelProgress));
+            localStorage.setItem('grapple_unlocked', JSON.stringify(unlockedLevels));
         }
 
         function attachGrapple(pIdx) {
@@ -555,10 +618,10 @@
             let minDist = config.maxAttachDist;
 
             anchors.forEach(a => {
-                if (a.x > p.x - 90) {
-                    let dist = Math.hypot(p.x - a.x, p.y - a.y);
-                    if (dist < minDist) {
-                        minDist = dist;
+                if (a.x > p.x - 50) {
+                    let d = Math.hypot(p.x - a.x, p.y - a.y);
+                    if (d < minDist) {
+                        minDist = d;
                         bestAnchor = a;
                     }
                 }
@@ -759,7 +822,6 @@
                     }
                 }
 
-                // Stark reduzierte Hindernis-Spawn-Chance
                 if (Math.random() < (levelData.obstacleChance || 0.1)) {
                     let obsX = currentX - levelData.spacing * 0.45;
                     let obsY = currentY + (Math.random() - 0.5) * 200 + 40;
@@ -801,6 +863,8 @@
             uiEnd.classList.add('hidden');
             uiHUD.classList.remove('hidden');
 
+            setInputMode(isTouchDevice ? 'touch' : inputMode);
+
             const currentLevel = gdLevels[selectedLevelIdx];
             setTrackByLevel(currentLevel.id);
             generateLevel(currentLevel);
@@ -825,7 +889,8 @@
                 uiHudP2.classList.add('hidden');
             }
 
-            camera.x = players[0].x - canvas.width * 0.35;
+            // Exakte Kamera-Positionierung basierend auf der Spieler-X-Koordinate
+            camera.x = players[0].x - canvas.width / 2;
             camera.y = players[0].y - canvas.height * 0.45;
         }
 
@@ -1027,12 +1092,18 @@
                 if (pt.life <= 0) particles.splice(i, 1);
             }
 
+            // Exakte Kamera-Führung (Sowohl X als auch Y-Achsennachführung)
             let activePlayers = players.filter(p => !p.dead);
             if (activePlayers.length > 0) {
                 let avgX = activePlayers.reduce((sum, p) => sum + p.x, 0) / activePlayers.length;
                 let avgY = activePlayers.reduce((sum, p) => sum + p.y, 0) / activePlayers.length;
-                camera.x += (avgX - canvas.width * 0.35 - camera.x) * 0.1;
-                camera.y += (avgY - canvas.height * 0.45 - camera.y) * 0.1;
+
+                let targetCamX = avgX - canvas.width / 2;
+                let targetCamY = avgY - canvas.height * 0.5;
+
+                // X-Koordinate direkt setzen, damit der Ball immer exakt in der Mitte bleibt
+                camera.x = targetCamX;
+                camera.y += (targetCamY - camera.y) * 0.1;
             }
 
             let maxP = Math.max(...players.map(p => p.x));
@@ -1055,43 +1126,46 @@
             } else if (players.every(p => p.dead)) {
                 if (!deathTimer) {
                     deathTimer = setTimeout(() => {
-                        if (pct > levelProgress[selectedLevelIdx]) {
-                            levelProgress[selectedLevelIdx] = pct;
-                            saveProgress();
-                        }
-                        document.getElementById('end-title').innerText = "GAME OVER!";
-                        document.getElementById('end-sub').innerText = `Du hast ${pct}% des Levels erreicht!`;
-                        uiEnd.classList.remove('hidden');
-                        uiEnd.classList.add('flex');
-                        state = 'end';
-                    }, 1000);
+                        startSelectedLevel();
+                    }, 1200);
                 }
             }
         }
 
         function drawLevelBackground(lvl, camX, camY) {
             ctx.save();
-            let theme = lvl ? lvl.bg : "NEON GRID";
-            
-            if (theme === "DEEP SPACE") {
-                ctx.fillStyle = '#030712';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-                for (let i = 0; i < 40; i++) {
-                    let sx = (i * 137 + camX * 0.1) % canvas.width;
-                    if (sx < 0) sx += canvas.width;
-                    let sy = (i * 219 + camY * 0.1) % canvas.height;
-                    if (sy < 0) sy += canvas.height;
-                    ctx.beginPath(); ctx.arc(sx, sy, (i % 3) + 1, 0, Math.PI * 2); ctx.fill();
-                }
-            } else if (theme === "RETRO SUNSET") {
+            let theme = lvl.bg;
+
+            if (theme === "DEMON REALM") {
+                let pulse = Math.sin(Date.now() * 0.003) * 0.1 + 0.9;
                 let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-                grad.addColorStop(0, '#1e1b4b'); grad.addColorStop(0.6, '#831843'); grad.addColorStop(1, '#0f172a');
-                ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
-                let sunY = canvas.height * 0.55;
-                let sunGrad = ctx.createLinearGradient(0, sunY - 80, 0, sunY + 80);
-                sunGrad.addColorStop(0, '#fde047'); sunGrad.addColorStop(1, '#f43f5e');
-                ctx.fillStyle = sunGrad; ctx.beginPath(); ctx.arc(canvas.width / 2, sunY, 75, 0, Math.PI * 2); ctx.fill();
+                grad.addColorStop(0, '#050002'); 
+                grad.addColorStop(0.5, '#2a0208'); 
+                grad.addColorStop(1, '#640d14');
+                ctx.fillStyle = grad; 
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.strokeStyle = `rgba(239, 68, 68, ${0.2 * pulse})`; 
+                ctx.lineWidth = 2;
+                let gridSize = 60;
+                let offsetX = -(camX * 0.4) % gridSize, offsetY = -(camY * 0.4) % gridSize;
+                for (let x = offsetX; x < canvas.width; x += gridSize) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+                for (let y = offsetY; y < canvas.height; y += gridSize) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+            } else if (theme === "DEEP SPACE") {
+                let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                grad.addColorStop(0, '#020617');
+                grad.addColorStop(1, '#0f172a');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                let sunY = canvas.height * 0.3;
+                let sunGrad = ctx.createRadialGradient(canvas.width / 2, sunY, 10, canvas.width / 2, sunY, 80);
+                sunGrad.addColorStop(0, '#38bdf8');
+                sunGrad.addColorStop(1, 'transparent');
+                ctx.fillStyle = sunGrad;
+                ctx.beginPath();
+                ctx.arc(canvas.width / 2, sunY, 75, 0, Math.PI * 2);
+                ctx.fill();
             } else if (theme === "CYBER MATRIX") {
                 ctx.fillStyle = '#022c22'; ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.strokeStyle = 'rgba(16, 185, 129, 0.15)'; ctx.lineWidth = 1;
@@ -1156,8 +1230,8 @@
                 ctx.beginPath();
                 ctx.arc(a.x, a.y, 11, 0, Math.PI * 2);
                 ctx.fillStyle = '#ffffff';
-                ctx.shadowColor = '#ffffff';
-                ctx.shadowBlur = 18;
+                ctx.shadowColor = '#38bdf8';
+                ctx.shadowBlur = 15;
                 ctx.fill();
                 ctx.shadowBlur = 0;
             });
@@ -1351,6 +1425,7 @@
                 let isPressed = gp.buttons[0]?.pressed || gp.buttons[7]?.pressed || gp.buttons[5]?.pressed || gp.axes[1] < -0.5;
                 
                 if (isPressed) {
+                    setInputMode('gamepad');
                     attachGrapple(pIndex);
                 } else {
                     detachGrapple(pIndex);
@@ -1360,6 +1435,7 @@
 
         let keysDown = {};
         window.addEventListener('keydown', (e) => {
+            setInputMode('keyboard');
             keysDown[e.code] = true;
             if (e.repeat) return;
             initAudio();
@@ -1388,32 +1464,69 @@
             }
         });
 
+        // Vollständiger Touch- & Pointer-Event Handler
+        window.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+                setInputMode('touch');
+            }
+        });
+
         window.addEventListener('touchstart', (e) => {
+            setInputMode('touch');
             initAudio();
             if (state !== 'playing') return;
+
+            // Direct Touch Steuerung überall auf dem Bildschirmschirm (ausgenommen Buttons)
+            if (e.target.closest('.interactive')) return;
+
             for (let i = 0; i < e.changedTouches.length; i++) {
                 let touch = e.changedTouches[i];
-                if (touch.clientX < window.innerWidth / 2) {
-                    attachGrapple(0);
+                if (currentMode === 2) {
+                    if (touch.clientX < window.innerWidth / 2) {
+                        attachGrapple(0);
+                    } else {
+                        attachGrapple(1);
+                    }
                 } else {
-                    if (currentMode === 2) attachGrapple(1);
-                    else attachGrapple(0);
+                    attachGrapple(0);
+                }
+            }
+        }, { passive: true });
+
+        window.addEventListener('touchend', (e) => {
+            if (state !== 'playing') return;
+            if (e.target.closest('.interactive')) return;
+
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                let touch = e.changedTouches[i];
+                if (currentMode === 2) {
+                    if (touch.clientX < window.innerWidth / 2) {
+                        detachGrapple(0);
+                    } else {
+                        detachGrapple(1);
+                    }
+                } else {
+                    detachGrapple(0);
                 }
             }
         });
 
-        window.addEventListener('touchend', (e) => {
-            if (state !== 'playing') return;
-            for (let i = 0; i < e.changedTouches.length; i++) {
-                let touch = e.changedTouches[i];
-                if (touch.clientX < window.innerWidth / 2) {
-                    detachGrapple(0);
-                } else {
-                    if (currentMode === 2) detachGrapple(1);
-                    else detachGrapple(0);
-                }
-            }
-        });
+        // Setup Virtual Touch Buttons (nur im 2-Spieler-Modus aktiv)
+        const btnP1 = document.getElementById('touch-btn-p1');
+        const btnP2 = document.getElementById('touch-btn-p2');
+
+        if (btnP1) {
+            btnP1.addEventListener('touchstart', (e) => { e.stopPropagation(); setInputMode('touch'); attachGrapple(0); }, { passive: true });
+            btnP1.addEventListener('touchend', (e) => { e.stopPropagation(); detachGrapple(0); }, { passive: true });
+            btnP1.addEventListener('mousedown', (e) => { e.stopPropagation(); attachGrapple(0); });
+            btnP1.addEventListener('mouseup', (e) => { e.stopPropagation(); detachGrapple(0); });
+        }
+        if (btnP2) {
+            btnP2.addEventListener('touchstart', (e) => { e.stopPropagation(); setInputMode('touch'); attachGrapple(1); }, { passive: true });
+            btnP2.addEventListener('touchend', (e) => { e.stopPropagation(); detachGrapple(1); }, { passive: true });
+            btnP2.addEventListener('mousedown', (e) => { e.stopPropagation(); attachGrapple(1); });
+            btnP2.addEventListener('mouseup', (e) => { e.stopPropagation(); detachGrapple(1); });
+        }
 
         function gameLoop() {
             updateGamepad();
